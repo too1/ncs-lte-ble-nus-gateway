@@ -32,17 +32,13 @@ static on_ble_data_received m_on_ble_data_received = 0;
 static struct bt_conn *default_conn;
 static struct bt_nus_client nus_client;
 
-K_SEM_DEFINE(nus_write_sem, 1, 1);
-
 static void ble_data_sent(struct bt_nus_client *nus, uint8_t err,
 					const uint8_t *const data, uint16_t len)
 {
 	ARG_UNUSED(nus);
 
-	k_sem_give(&nus_write_sem);
-
 	if (err) {
-		LOG_WRN("ATT error code: 0x%02X", err);
+		LOG_WRN("NUS write ATT error code: 0x%02X", err);
 	}
 }
 
