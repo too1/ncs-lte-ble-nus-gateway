@@ -71,6 +71,7 @@ static struct k_work_delayable leds_update_work;
 static struct k_work_delayable connect_work;
 struct k_work_delayable aggregated_work;
 static struct k_work agps_request_work;
+static struct k_work send_nus_data_work;
 
 static struct nrf_modem_gnss_pvt_data_frame last_pvt;
 static bool nrf_modem_gnss_fix;
@@ -86,6 +87,7 @@ enum error_type {
 static void cloud_connect(struct k_work *work);
 static void sensors_init(void);
 static void work_init(void);
+static void send_nus_data(struct k_work *work);
 
 void sensor_data_send(struct nrf_cloud_sensor_data *data);
 
@@ -473,6 +475,7 @@ static void work_init(void)
 	k_work_init_delayable(&leds_update_work, leds_update);
 	k_work_init_delayable(&connect_work, cloud_connect);
 	k_work_init_delayable(&aggregated_work, send_aggregated_data);
+	k_work_init(&send_nus_data_work, send_nus_data);
 	k_work_schedule(&leds_update_work, LEDS_UPDATE_INTERVAL);
 }
 
@@ -575,12 +578,37 @@ static void buttons_leds_init(void)
 	}
 }
 
+static uint8_t nus_tx_data[32];
+static uint16_t nus_tx_data_len;
+
+static void on_ble_received(const uint8_t *data, uint16_t length)
+{
+	static uint8_t buf[32];
+	memcpy(buf, data, length);
+	buf[length] = 0;
+	LOG_INF("Data received (%i bytes): %s", length, buf);
+
+	// To send a packet copy the data into the temporary nus_tx_data buffer, and submit the send_nus_data_work work item
+	strcpy(nus_tx_data, "Packet received!\r\n");
+	nus_tx_data_len = strlen(nus_tx_data);
+	k_work_submit(&send_nus_data_work);
+}
+
+static void send_nus_data(struct k_work *work)
+{
+	// Attempt to send data to the NUS client, and log any returned errors
+	int err = ble_send_data(nus_tx_data, nus_tx_data_len);
+	if(err) {
+		LOG_ERR("Error sending NUS data: %i", err);
+	}
+}
+
 void main(void)
 {
 	LOG_INF("LTE Sensor Gateway sample started");
 
 	buttons_leds_init();
-	ble_init();
+	ble_init(on_ble_received);
 
 	work_init();
 	cloud_init();
